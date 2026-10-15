@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if the authenticated user is an authorized college admin
+    function isCollegeAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Institution settings and configuration
+    match /institutions/{institutionId} {
+      // Public read access for general institution details
+      allow read: if true;
+      // Only authorized administrators can update institution settings
+      allow write: if isCollegeAdmin();
+    }
+
+    // Convocation Events Collection
+    match /institutions/{institutionId}/events/{eventId} {
+      // Students can ONLY read PUBLISHED events. Drafts and internal notes are blocked.
+      allow read: if resource.data.status == 'published' || isCollegeAdmin();
+      // Only authorized administrators can create, edit, publish, or archive events
+      allow create, update, delete: if isCollegeAdmin();
+    }
+
+    // Notices and Announcements Collection
+    match /institutions/{institutionId}/notices/{noticeId} {
+      // Students can ONLY read PUBLISHED notices.
+      allow read: if resource.data.status == 'published' || isCollegeAdmin();
+      // Only authorized administrators can manage notices
+      allow create, update, delete: if isCollegeAdmin();
+    }
+
+    // Administrators registry (mapping auth UIDs to admin profiles)
+    match /admins/{adminId} {
+      // Only authenticated admins can read admin profiles
+      allow read: if isCollegeAdmin();
+      // Write access is restricted to existing admins or initial setup via Admin SDK
+      allow write: if isCollegeAdmin();
+    }
+
+    // Audit logs for publication actions
+    match /institutions/{institutionId}/audit_logs/{logId} {
+      allow read: if isCollegeAdmin();
+      allow write: if isCollegeAdmin();
+    }
+  }
+}
